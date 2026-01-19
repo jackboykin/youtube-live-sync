@@ -6,6 +6,7 @@
 // @author       jackboykin (with assistance from Claude, Anthropic)
 // @match        https://www.youtube.com/*
 // @match        https://tv.youtube.com/*
+// @exclude      https://www.youtube.com/live_chat*
 // @grant        none
 // @run-at       document-idle
 // @updateURL    https://raw.githubusercontent.com/jackboykin/youtube-live-sync/main/yt-actual-live.user.js
@@ -14,7 +15,7 @@
 
 (function() {
     'use strict';
-
+    
     if (window.self !== window.top) return;
     
     if (window._liveSyncInitialized) return;
