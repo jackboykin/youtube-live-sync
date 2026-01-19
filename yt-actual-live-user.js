@@ -3,13 +3,13 @@
 // @namespace    http://tampermonkey.net/
 // @version      3.0
 // @description  Automatically minimizes latency on YouTube livestreams and YouTube TV live content.
-// @author       jackboykin with assistance from Claude
+// @author       jackboykin (with assistance from Claude, Anthropic)
 // @match        https://www.youtube.com/*
 // @match        https://tv.youtube.com/*
 // @grant        none
 // @run-at       document-idle
-// @updateURL    https://raw.githubusercontent.com/jackboykin/youtube-live-sync/main/youtube-live-sync.user.js
-// @downloadURL  https://raw.githubusercontent.com/jackboykin/youtube-live-sync/main/youtube-live-sync.user.js
+// @updateURL    https://raw.githubusercontent.com/jackboykin/youtube-live-sync/main/yt-actual-live-user.js
+// @downloadURL  https://raw.githubusercontent.com/jackboykin/youtube-live-sync/main/yt-actual-live-user.js
 // ==/UserScript==
 
 (function() {
