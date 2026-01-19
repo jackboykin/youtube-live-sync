@@ -14,7 +14,7 @@ Edit these values in the script:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TARGET_BUFFER` | 5.0 | Seconds behind live edge to maintain |
-| `CHECK_INTERVAL` | 3000 | Milliseconds between latency checks |
+| `CHECK_INTERVAL` | 6000 | Milliseconds between latency checks |
 
 Lower `TARGET_BUFFER` = closer to live but higher rebuffer risk.
 
