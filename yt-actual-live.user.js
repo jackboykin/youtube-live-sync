@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube & YouTube TV Live Edge Auto-Sync
 // @namespace    http://tampermonkey.net/
-// @version      3.1
+// @version      3.2
 // @description  Automatically minimizes latency on YouTube livestreams and YouTube TV live content.
 // @author       jackboykin (with assistance from Claude, Anthropic)
 // @match        https://www.youtube.com/*
@@ -14,6 +14,8 @@
 
 (function() {
     'use strict';
+
+    if (window.self !== window.top) return;
     
     if (window._liveSyncInitialized) return;
     window._liveSyncInitialized = true;
