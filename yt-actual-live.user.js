@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube & YouTube TV Live Edge Auto-Sync
 // @namespace    http://tampermonkey.net/
-// @version      4.1
+// @version      4.2
 // @description  Automatically minimizes latency on YouTube livestreams and YouTube TV live content.
 // @author       jackboykin (with assistance from Claude, Anthropic)
 // @match        https://www.youtube.com/*
@@ -52,24 +52,30 @@
     let dvrModeActive = false;
     let lastVideoId = null;
 
+    let lastKnownTime = 0;
+    let lastSyncTime = 0;
+
     function attachSeekListener(video) {
         if (video._liveSyncSeekListener) return;
         video._liveSyncSeekListener = true;
 
-        let preSeekTime = video.currentTime;
+        // Track time changes to detect backward seeks (works even if native events don't fire)
+        video.addEventListener('timeupdate', () => {
+            const currentTime = video.currentTime;
+            const timeSinceSync = Date.now() - lastSyncTime;
 
-        video.addEventListener('seeking', () => {
-            preSeekTime = video.currentTime;
-        });
-
-        video.addEventListener('seeked', () => {
-            const seekDelta = video.currentTime - preSeekTime;
-            // If user seeked backward by more than 2 seconds, enter DVR mode
-            if (seekDelta < -2) {
+            // If time jumped backward significantly and it wasn't our sync (give 1s grace period)
+            if (timeSinceSync > 1000 && lastKnownTime - currentTime > 5) {
                 dvrModeActive = true;
-                log(`DVR mode activated (seeked back ${Math.abs(seekDelta).toFixed(1)}s)`);
+                log(`DVR mode activated (jumped back ${(lastKnownTime - currentTime).toFixed(1)}s)`);
             }
+
+            lastKnownTime = currentTime;
         });
+    }
+
+    function markSyncTime() {
+        lastSyncTime = Date.now();
     }
 
     function getCurrentVideoId() {
@@ -87,6 +93,7 @@
         const currentId = getCurrentVideoId();
         if (currentId && currentId !== lastVideoId) {
             lastVideoId = currentId;
+            lastKnownTime = 0;
             if (dvrModeActive) {
                 dvrModeActive = false;
                 log('DVR mode reset (video changed)');
@@ -212,6 +219,7 @@
         if (!info) return;
 
         if (info.latency > config.targetBuffer + 1.0) {
+            markSyncTime();
             video.currentTime = info.edge - config.targetBuffer;
             log(`Synced. Latency was: ${info.latency.toFixed(2)}s`);
         }
@@ -242,6 +250,7 @@
         log(`Latency: ${info.latency.toFixed(2)}s`);
 
         if (info.latency > config.targetBuffer + 1.0) {
+            markSyncTime();
             video.currentTime = info.edge - config.targetBuffer;
             log(`Synced from ${info.latency.toFixed(2)}s`);
         }
