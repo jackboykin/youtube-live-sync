@@ -3,11 +3,13 @@
 // @namespace    http://tampermonkey.net/
 // @version      3.0
 // @description  Automatically minimizes latency on YouTube livestreams and YouTube TV live content.
-// @author       jackboykin with assistance from Claude 
+// @author       jackboykin with assistance from Claude
 // @match        https://www.youtube.com/*
 // @match        https://tv.youtube.com/*
 // @grant        none
 // @run-at       document-idle
+// @updateURL    https://raw.githubusercontent.com/jackboykin/youtube-live-sync/main/youtube-live-sync.user.js
+// @downloadURL  https://raw.githubusercontent.com/jackboykin/youtube-live-sync/main/youtube-live-sync.user.js
 // ==/UserScript==
 
 (function() {
@@ -19,7 +21,7 @@
     }
     
     const TARGET_BUFFER = 5.0;
-    const CHECK_INTERVAL = 3000;
+    const CHECK_INTERVAL = 6000;
     
     console.log('[Live Sync] Script loaded on: ' + window.location.hostname);
     
