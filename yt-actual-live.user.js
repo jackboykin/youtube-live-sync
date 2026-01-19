@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube & YouTube TV Live Edge Auto-Sync
 // @namespace    http://tampermonkey.net/
-// @version      4.0
+// @version      4.1
 // @description  Automatically minimizes latency on YouTube livestreams and YouTube TV live content.
 // @author       jackboykin (with assistance from Claude, Anthropic)
 // @match        https://www.youtube.com/*
@@ -49,16 +49,49 @@
     }
 
     // DVR/rewind detection
-    let lastUserSeek = 0;
-    const SEEK_COOLDOWN = 10000;
+    let dvrModeActive = false;
+    let lastVideoId = null;
 
     function attachSeekListener(video) {
         if (video._liveSyncSeekListener) return;
         video._liveSyncSeekListener = true;
+
+        let preSeekTime = video.currentTime;
+
         video.addEventListener('seeking', () => {
-            lastUserSeek = Date.now();
-            log('User seek detected');
+            preSeekTime = video.currentTime;
         });
+
+        video.addEventListener('seeked', () => {
+            const seekDelta = video.currentTime - preSeekTime;
+            // If user seeked backward by more than 2 seconds, enter DVR mode
+            if (seekDelta < -2) {
+                dvrModeActive = true;
+                log(`DVR mode activated (seeked back ${Math.abs(seekDelta).toFixed(1)}s)`);
+            }
+        });
+    }
+
+    function getCurrentVideoId() {
+        if (isStandardYouTube()) {
+            const player = document.getElementById('movie_player');
+            if (player && typeof player.getVideoData === 'function') {
+                return player.getVideoData().video_id;
+            }
+        }
+        // For YTTV, use the URL as identifier
+        return window.location.href;
+    }
+
+    function checkVideoChange() {
+        const currentId = getCurrentVideoId();
+        if (currentId && currentId !== lastVideoId) {
+            lastVideoId = currentId;
+            if (dvrModeActive) {
+                dvrModeActive = false;
+                log('DVR mode reset (video changed)');
+            }
+        }
     }
 
     // Public API
@@ -67,7 +100,8 @@
             const config = getConfig();
             config.enabled = true;
             saveConfig(config);
-            log('Enabled');
+            dvrModeActive = false;
+            log('Enabled (DVR mode reset)');
         },
         disable: () => {
             const config = getConfig();
@@ -91,11 +125,16 @@
             const info = video ? getLatencyInfo(video) : null;
             return {
                 enabled: config.enabled,
+                dvrMode: dvrModeActive,
                 targetBuffer: config.targetBuffer,
                 debugLogging: config.debugLogging,
                 currentLatency: info ? info.latency : null,
                 isLive: isLiveContent()
             };
+        },
+        exitDvr: () => {
+            dvrModeActive = false;
+            log('DVR mode manually exited');
         },
         toggleDebug: () => {
             const config = getConfig();
@@ -163,9 +202,9 @@
 
         attachSeekListener(video);
 
-        // Check for recent user seek
-        if (Date.now() - lastUserSeek < SEEK_COOLDOWN) {
-            log('Skipping sync - recent user seek detected');
+        // Skip if in DVR mode (user seeked backward)
+        if (dvrModeActive) {
+            log('Skipping sync - DVR mode active');
             return;
         }
 
@@ -188,9 +227,9 @@
 
         attachSeekListener(video);
 
-        // Check for recent user seek
-        if (Date.now() - lastUserSeek < SEEK_COOLDOWN) {
-            log('Skipping sync - recent user seek detected');
+        // Skip if in DVR mode (user seeked backward)
+        if (dvrModeActive) {
+            log('Skipping sync - DVR mode active');
             return;
         }
 
@@ -213,6 +252,9 @@
         setInterval(() => {
             const config = getConfig();
             if (!config.enabled) return;
+
+            // Reset DVR mode if video changed
+            checkVideoChange();
 
             if (isStandardYouTube()) {
                 handleStandardYouTube();
