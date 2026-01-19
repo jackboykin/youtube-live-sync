@@ -5,7 +5,7 @@ Userscript that automatically minimizes latency on YouTube livestreams and YouTu
 ## Installation
 
 1. Install [Violentmonkey](https://violentmonkey.github.io/) or [Tampermonkey](https://www.tampermonkey.net/)
-2. Click [youtube-live-sync.user.js](youtube-live-sync.user.js) → Raw → Install
+2. Click [yt-actual-live-user.js](yt-actual-live-user.js) → Raw → Install
 
 ## Configuration
 
