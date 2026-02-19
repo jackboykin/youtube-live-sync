@@ -1,0 +1,19 @@
+{
+  "name": "youtube-live-sync",
+  "version": "5.0",
+  "description": "Automatically minimizes latency on YouTube livestreams and YouTube TV live content.",
+  "author": "jackboykin (with assistance from Claude, Anthropic)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/yt-actual-live.user.ts --outdir dist --target browser && bun run scripts/add-header.ts",
+    "dev": "bun build src/yt-actual-live.user.ts --outdir dist --target browser --watch",
+    "typecheck": "bun tsc --noEmit",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  }
+}
