@@ -28,11 +28,11 @@ import type { Config, LatencyInfo, LiveSyncStatus, LiveSyncAPI, YouTubePlayer } 
 
         constructor() {
             this.config = this.loadConfig();
-            this.attachEventListeners();
-            setTimeout(() => {
-                this.log('Starting sync loop');
-                this.runSyncLoop();
-            }, 5000);
+            // Video events don't bubble — use capture phase
+            document.addEventListener('timeupdate', this.onTimeUpdate, true);
+            document.addEventListener('seeking', this.onSeeking, true);
+            document.addEventListener('seeked', this.onSeeked, true);
+            setTimeout(() => this.runSyncLoop(), 5000);
         }
 
         private loadConfig(): Config {
@@ -44,22 +44,15 @@ import type { Config, LatencyInfo, LiveSyncStatus, LiveSyncAPI, YouTubePlayer } 
             }
         }
 
-        private saveConfig(config: Config): void {
-            this.config = config;
-            localStorage.setItem('liveSyncConfig', JSON.stringify(config));
+        private updateConfig(patch: Partial<Config>): void {
+            Object.assign(this.config, patch);
+            localStorage.setItem('liveSyncConfig', JSON.stringify(this.config));
         }
 
         private log(...args: unknown[]): void {
             if (this.config.debugLogging) {
                 console.log('[Live Sync]', ...args);
             }
-        }
-
-        private attachEventListeners(): void {
-            // Video events don't bubble — use capture phase for document-level delegation
-            document.addEventListener('timeupdate', this.onTimeUpdate, true);
-            document.addEventListener('seeking', this.onSeeking, true);
-            document.addEventListener('seeked', this.onSeeked, true);
         }
 
         private onTimeUpdate = (e: Event): void => {
@@ -102,36 +95,25 @@ import type { Config, LatencyInfo, LiveSyncStatus, LiveSyncAPI, YouTubePlayer } 
 
         private getLatencyInfo(video: HTMLVideoElement): LatencyInfo | null {
             if (video.buffered.length === 0) return null;
-
             const edge = video.buffered.end(video.buffered.length - 1);
-            const current = video.currentTime;
+            const latency = edge - video.currentTime;
+            return latency > 0 ? { edge, latency } : null;
+        }
 
-            if (edge <= current) return null;
-
-            return { edge, current, latency: edge - current };
+        private getYTPlayer(): YouTubePlayer | null {
+            if (!this.isStandardYT) return null;
+            const el = document.getElementById('movie_player') as YouTubePlayer | null;
+            return el && typeof el.getVideoData === 'function' ? el : null;
         }
 
         private isLiveContent(video?: HTMLVideoElement | null): boolean {
-            if (this.isStandardYT) {
-                const player = document.getElementById('movie_player') as YouTubePlayer | null;
-                return !!player && typeof player.getVideoData === 'function' && player.getVideoData().isLive;
-            }
-            if (this.isYTTV) {
-                // YTTV sets a large finite duration for live DVR streams
-                // (e.g. ~50000s) instead of Infinity. VODs are rarely > 6 hours.
-                return !!video && video.duration > 21600;
-            }
-            return false;
+            const player = this.getYTPlayer();
+            if (player) return player.getVideoData().isLive;
+            return this.isYTTV && !!video && video.duration > 21600;
         }
 
         private getCurrentVideoId(): string {
-            if (this.isStandardYT) {
-                const player = document.getElementById('movie_player') as YouTubePlayer | null;
-                if (player && typeof player.getVideoData === 'function') {
-                    return player.getVideoData().video_id;
-                }
-            }
-            return window.location.href;
+            return this.getYTPlayer()?.getVideoData().video_id ?? window.location.href;
         }
 
         private checkVideoChange(): void {
@@ -139,10 +121,7 @@ import type { Config, LatencyInfo, LiveSyncStatus, LiveSyncAPI, YouTubePlayer } 
             if (currentId && currentId !== this.lastVideoId) {
                 this.lastVideoId = currentId;
                 this.lastKnownTime = 0;
-                if (this.dvrModeActive) {
-                    this.dvrModeActive = false;
-                    this.log('DVR mode reset (video changed)');
-                }
+                this.dvrModeActive = false;
             }
         }
 
@@ -152,40 +131,29 @@ import type { Config, LatencyInfo, LiveSyncStatus, LiveSyncAPI, YouTubePlayer } 
 
             this.checkVideoChange();
 
+            const info = this.getLatencyInfo(video);
+            if (!info) return;
+
+            const threshold = this.config.targetBuffer + 1.0;
+
             if (this.dvrModeActive) {
-                const info = this.getLatencyInfo(video);
-                if (info && info.latency <= this.config.targetBuffer + 1.0) {
-                    this.dvrModeActive = false;
-                    this.log('DVR mode auto-exited (near live edge)');
-                } else {
-                    this.log('Skipping sync — DVR mode active');
-                    return;
-                }
+                if (info.latency > threshold) return;
+                this.dvrModeActive = false;
+                this.log('DVR mode auto-exited (near live edge)');
             }
 
-            const info = this.getLatencyInfo(video);
-            if (!info) {
-                this.log('No buffer data');
+            if (info.latency <= threshold) {
+                this.syncCooldown = false;
                 return;
             }
-
-            this.log(`Latency: ${info.latency.toFixed(2)}s`);
-
-            if (info.latency > this.config.targetBuffer + 1.0) {
-                // Skip one tick after syncing to let the MSE seek settle
-                if (this.syncCooldown) {
-                    this.syncCooldown = false;
-                    this.log('Cooldown — waiting for previous sync to settle');
-                    return;
-                }
-                this.lastSyncTime = Date.now();
-                this.syncCooldown = true;
-                video.currentTime = info.edge - this.config.targetBuffer;
-                this.log(`Synced from ${info.latency.toFixed(2)}s`);
-            } else {
-                // Seek settled — clear cooldown so it doesn't go stale
+            if (this.syncCooldown) {
                 this.syncCooldown = false;
+                return;
             }
+            this.lastSyncTime = Date.now();
+            this.syncCooldown = true;
+            video.currentTime = info.edge - this.config.targetBuffer;
+            this.log(`Synced: ${info.latency.toFixed(1)}s → ${this.config.targetBuffer}s`);
         }
 
         private runSyncLoop(): void {
@@ -197,23 +165,17 @@ import type { Config, LatencyInfo, LiveSyncStatus, LiveSyncAPI, YouTubePlayer } 
 
         // Public API
         enable(): void {
-            this.saveConfig({ ...this.config, enabled: true });
+            this.updateConfig({ enabled: true });
             this.dvrModeActive = false;
-            this.log('Enabled (DVR mode reset)');
         }
 
         disable(): void {
-            this.saveConfig({ ...this.config, enabled: false });
-            this.log('Disabled');
+            this.updateConfig({ enabled: false });
         }
 
         setBuffer(seconds: number): void {
-            if (typeof seconds !== 'number' || seconds < 0) {
-                console.error('[Live Sync] setBuffer requires a positive number');
-                return;
-            }
-            this.saveConfig({ ...this.config, targetBuffer: seconds });
-            this.log('Target buffer set to', seconds, 'seconds');
+            if (typeof seconds !== 'number' || seconds < 0) return;
+            this.updateConfig({ targetBuffer: seconds });
         }
 
         getStatus(): LiveSyncStatus {
@@ -235,9 +197,8 @@ import type { Config, LatencyInfo, LiveSyncStatus, LiveSyncAPI, YouTubePlayer } 
         }
 
         toggleDebug(): void {
-            const newDebug = !this.config.debugLogging;
-            this.saveConfig({ ...this.config, debugLogging: newDebug });
-            console.log('[Live Sync] Debug logging', newDebug ? 'enabled' : 'disabled');
+            this.updateConfig({ debugLogging: !this.config.debugLogging });
+            console.log('[Live Sync] Debug', this.config.debugLogging ? 'on' : 'off');
         }
     }
 

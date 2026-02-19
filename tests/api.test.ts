@@ -3,17 +3,17 @@ import { describe, it, expect } from 'bun:test';
 /**
  * Mirrors getLatencyInfo() from the source:
  *   if (bufferedLength === 0) return null;
- *   if (edge <= current) return null;
- *   return { edge, current, latency: edge - current };
+ *   latency = edge - current;
+ *   return latency > 0 ? { edge, latency } : null;
  */
 function getLatencyInfo(
     bufferedLength: number,
     edge: number,
     current: number
-): { edge: number; current: number; latency: number } | null {
+): { edge: number; latency: number } | null {
     if (bufferedLength === 0) return null;
-    if (edge <= current) return null;
-    return { edge, current, latency: edge - current };
+    const latency = edge - current;
+    return latency > 0 ? { edge, latency } : null;
 }
 
 /**
@@ -67,10 +67,9 @@ describe('Latency Calculation', () => {
         expect(info!.latency).toBeCloseTo(12.74, 2);
     });
 
-    it('should preserve edge and current in result', () => {
+    it('should preserve edge in result', () => {
         const info = getLatencyInfo(1, 500.5, 495.0);
         expect(info!.edge).toBe(500.5);
-        expect(info!.current).toBe(495.0);
     });
 });
 
